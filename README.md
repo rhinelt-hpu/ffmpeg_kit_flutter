@@ -339,3 +339,4 @@ FFmpegKitConfig.enableStatisticsCallback((statistics) {
 ```dart  
 FFmpegKitConfig.setFontDirectoryList(["/system/fonts", "/System/Library/Fonts", "<folder with fonts>"]);
 ```
+# Build Info
