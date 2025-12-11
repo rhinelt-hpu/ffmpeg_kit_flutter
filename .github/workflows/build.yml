@@ -1,0 +1,135 @@
+name: Build Android & iOS
+
+on:
+  push:
+    branches:
+      - master
+      - main
+      - develop
+  pull_request:
+    branches:
+      - master
+      - main
+      - develop
+  workflow_dispatch:
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    name: Build Android APK
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: 'stable'
+          cache: true
+
+      - name: Get Flutter dependencies
+        run: |
+          cd example
+          flutter pub get
+
+      - name: Build APK
+        run: |
+          cd example
+          flutter build apk --release
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release.apk
+          path: example/build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 30
+
+  build-ios:
+    runs-on: macos-latest
+    name: Build iOS App
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: 'stable'
+          cache: true
+
+      - name: Get Flutter dependencies
+        run: |
+          cd example
+          flutter pub get
+
+      - name: Install CocoaPods dependencies
+        run: |
+          cd example/ios
+          pod repo update
+          pod install --repo-update
+
+      - name: Build iOS app
+        run: |
+          cd example
+          flutter build ios --release
+
+      - name: Create iOS app archive
+        run: |
+          cd example/ios
+          xcodebuild -workspace Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -derivedDataPath build \
+            -arch arm64 \
+            build-for-testing
+
+      - name: Upload iOS build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-build
+          path: example/ios/build
+          retention-days: 30
+
+      - name: Build IPA
+        run: |
+          cd example/ios
+          xcodebuild -workspace Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -derivedDataPath build \
+            -arch arm64 \
+            -allowProvisioningUpdates \
+            archive -archivePath build/Runner.xcarchive
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: app.ipa
+          path: example/ios/build/Runner.xcarchive
+          retention-days: 30
+
+  build-status:
+    name: Build Status
+    runs-on: ubuntu-latest
+    needs: [build-android, build-ios]
+    if: always()
+    steps:
+      - name: Check Build Status
+        run: |
+          if [ "${{ needs.build-android.result }}" = "success" ] && [ "${{ needs.build-ios.result }}" = "success" ]; then
+            echo "✅ Both Android and iOS builds completed successfully!"
+            exit 0
+          else
+            echo "❌ One or more builds failed"
+            exit 1
+          fi
